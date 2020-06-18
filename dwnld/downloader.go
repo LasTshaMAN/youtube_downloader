@@ -1,11 +1,14 @@
 package dwnld
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/LasTshaMAN/Go-Execute/jobs"
+	"github.com/rs/zerolog/log"
 
 	"github.com/rylio/ytdl"
 )
@@ -27,10 +30,15 @@ func DownloadBatch(dir string, urls []string) {
 	executor := jobs.NewExecutor(workersAmount, workersAmount)
 	out := make(chan struct{}, workersAmount)
 
+	client := ytdl.Client{
+		HTTPClient: http.DefaultClient,
+		Logger:     log.Logger,
+	}
+
 	for _, url := range urls {
 		executor.Enqueue(func(dir, url string) func() {
 			return func() {
-				download(dir, url)
+				download(client, dir, url)
 				out <- struct{}{}
 			}
 		}(dir, url))
@@ -79,8 +87,8 @@ func tmpDirIn(dir string) string {
 	return filepath.Join(dir, tmpDirName)
 }
 
-func download(dir string, url string) {
-	fileName, err := downloadToTmp(dir, url)
+func download(client ytdl.Client, dir string, url string) {
+	fileName, err := downloadToTmp(client, dir, url)
 	if err != nil {
 		fmt.Printf("download failed: %s - error: %v \n", url, err)
 		return
@@ -94,10 +102,10 @@ func download(dir string, url string) {
 	}
 }
 
-func downloadToTmp(dir string, url string) (string, error) {
+func downloadToTmp(client ytdl.Client, dir string, url string) (string, error) {
 	fmt.Printf("downloading ... %s ... \n", url)
 
-	vid, err := ytdl.GetVideoInfo(url)
+	vid, err := client.GetVideoInfo(context.Background(), url)
 	if err != nil {
 		return "", fmt.Errorf("failed to get url info: %v", err)
 	}
@@ -105,7 +113,7 @@ func downloadToTmp(dir string, url string) (string, error) {
 	assets := vid.Formats.Best(ytdl.FormatAudioBitrateKey)
 
 	for _, asset := range assets {
-		fileName, err := downloadAsset(dir, vid, asset)
+		fileName, err := downloadAsset(client, dir, vid, asset)
 		if err != nil {
 			fmt.Printf("failed downloading asset: %d - error: %v \n", asset.Itag, err)
 			continue
@@ -126,7 +134,7 @@ func alreadyExists(dir, fileName string) bool {
 	return true
 }
 
-func downloadAsset(dir string, vid *ytdl.VideoInfo, asset ytdl.Format) (string, error) {
+func downloadAsset(client ytdl.Client, dir string, vid *ytdl.VideoInfo, asset *ytdl.Format) (string, error) {
 	fileName := vid.ID + "." + asset.Extension
 	if alreadyExists(dir, fileName) {
 		return "", nil
@@ -142,7 +150,7 @@ func downloadAsset(dir string, vid *ytdl.VideoInfo, asset ytdl.Format) (string, 
 		}
 	}()
 
-	if err := vid.Download(asset, file); err != nil {
+	if err := client.Download(context.Background(), vid, asset, file); err != nil {
 		return "", fmt.Errorf("failed downloading video: %v", err)
 	}
 

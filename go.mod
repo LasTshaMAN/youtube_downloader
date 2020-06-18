@@ -7,9 +7,9 @@ require (
 	github.com/PuerkitoBio/goquery v1.5.0 // indirect
 	github.com/Sirupsen/logrus v1.4.1 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
-	github.com/rylio/ytdl v0.5.1
+	github.com/rs/zerolog v1.18.0
+	github.com/rylio/ytdl v0.6.4-0.20200609085145-18f442924156
 	github.com/sirupsen/logrus v1.4.1 // indirect
-	golang.org/x/sys v0.0.0-20190426135247-a129542de9ae // indirect
 )
 
 replace github.com/Sirupsen/logrus v1.4.1 => github.com/sirupsen/logrus v1.4.1
