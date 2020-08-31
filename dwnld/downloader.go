@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/LasTshaMAN/Go-Execute/jobs"
+	"github.com/LasTshaMAN/Go-Execute/executor"
 	"github.com/rs/zerolog/log"
 
-	"github.com/rylio/ytdl"
+	"github.com/Andreychik32/ytdl"
 )
 
 const tmpDirName = "tmp"
@@ -27,7 +27,7 @@ func DownloadBatch(dir string, urls []string) {
 	fmt.Printf("will download in `%s` \n", dir)
 
 	workersAmount := uint(100)
-	executor := jobs.NewExecutor(workersAmount, workersAmount)
+	e := executor.New(workersAmount)
 	out := make(chan struct{}, workersAmount)
 
 	client := ytdl.Client{
@@ -36,7 +36,7 @@ func DownloadBatch(dir string, urls []string) {
 	}
 
 	for _, url := range urls {
-		executor.Enqueue(func(dir, url string) func() {
+		e.Enqueue(func(dir, url string) func() {
 			return func() {
 				download(client, dir, url)
 				out <- struct{}{}
@@ -77,7 +77,7 @@ func cleanTmpArtifacts(dir string) error {
 	if err := os.RemoveAll(tmpDirPath); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(tmpDirPath, os.ModePerm); err != nil {
+	if err := os.MkdirAll(tmpDirPath, 0666); err != nil {
 		panic(fmt.Sprintf("Failed to create tmp dir: %v", err))
 	}
 	return nil

@@ -1,15 +1,9 @@
 module youtube_downloader
 
-go 1.12
+go 1.15
 
 require (
-	github.com/LasTshaMAN/Go-Execute v0.0.0-20190326095754-a40ce3837547
-	github.com/PuerkitoBio/goquery v1.5.0 // indirect
-	github.com/Sirupsen/logrus v1.4.1 // indirect
-	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
-	github.com/rs/zerolog v1.18.0
-	github.com/rylio/ytdl v0.6.4-0.20200609085145-18f442924156
-	github.com/sirupsen/logrus v1.4.1 // indirect
+	github.com/Andreychik32/ytdl v1.0.4
+	github.com/LasTshaMAN/Go-Execute v0.0.0-20190708151404-6abe00de2f98
+	github.com/rs/zerolog v1.19.0
 )
-
-replace github.com/Sirupsen/logrus v1.4.1 => github.com/sirupsen/logrus v1.4.1
