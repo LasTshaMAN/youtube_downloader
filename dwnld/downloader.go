@@ -2,15 +2,17 @@ package dwnld
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/LasTshaMAN/Go-Execute/executor"
-	"github.com/rs/zerolog/log"
-
-	"github.com/Andreychik32/ytdl"
+	"github.com/kkdai/youtube/v2"
+	"github.com/kkdai/youtube/v2/downloader"
 )
 
 const tmpDirName = "tmp"
@@ -30,9 +32,8 @@ func DownloadBatch(dir string, urls []string) {
 	e := executor.New(workersAmount)
 	out := make(chan struct{}, workersAmount)
 
-	client := ytdl.Client{
+	client := youtube.Client{
 		HTTPClient: http.DefaultClient,
-		Logger:     log.Logger,
 	}
 
 	for _, url := range urls {
@@ -87,7 +88,7 @@ func tmpDirIn(dir string) string {
 	return filepath.Join(dir, tmpDirName)
 }
 
-func download(client ytdl.Client, dir string, url string) {
+func download(client youtube.Client, dir string, url string) {
 	fileName, err := downloadToTmp(client, dir, url)
 	if err != nil {
 		fmt.Printf("download failed: %s - error: %v \n", url, err)
@@ -102,25 +103,24 @@ func download(client ytdl.Client, dir string, url string) {
 	}
 }
 
-func downloadToTmp(client ytdl.Client, dir string, url string) (string, error) {
+func downloadToTmp(client youtube.Client, dir string, url string) (string, error) {
 	fmt.Printf("downloading ... %s ... \n", url)
 
-	vid, err := client.GetVideoInfo(context.Background(), url)
+	vid, err := client.GetVideoContext(context.Background(), url)
 	if err != nil {
 		return "", fmt.Errorf("failed to get url info: %v", err)
 	}
 
-	assets := vid.Formats.Best(ytdl.FormatAudioBitrateKey)
+	//format := vid.Formats.FindByQuality("hd1080")
 
-	for _, asset := range assets {
-		fileName, err := downloadAsset(client, dir, vid, asset)
-		if err != nil {
-			fmt.Printf("failed downloading asset: %d - error: %v \n", asset.Itag, err)
-			continue
-		}
-		return fileName, nil
+	fileName := vid.ID + ".mp4"
+
+	err = downloadVid(dir, fileName, vid)
+	if err != nil {
+		fmt.Printf("failed downloading vid: %s - error: %v \n", vid.Title, err)
 	}
-	return "", fmt.Errorf("failed to download any of the assets")
+
+	return fileName, nil
 }
 
 func alreadyExists(dir, fileName string) bool {
@@ -134,25 +134,34 @@ func alreadyExists(dir, fileName string) bool {
 	return true
 }
 
-func downloadAsset(client ytdl.Client, dir string, vid *ytdl.VideoInfo, asset *ytdl.Format) (string, error) {
-	fileName := vid.ID + "." + asset.Extension
+func downloadVid(dir string, fileName string, vid *youtube.Video) error {
 	if alreadyExists(dir, fileName) {
-		return "", nil
+		return nil
 	}
 
-	file, err := os.Create(filepath.Join(tmpDirIn(dir), fileName))
-	if err != nil {
-		return "", fmt.Errorf("failed to create file: `%s` - error: %v", fileName, err)
+	httpTransport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		IdleConnTimeout:       60 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			fmt.Printf("failed to save video file: %s - error: %v\n", fileName, err)
-		}
-	}()
 
-	if err := client.Download(context.Background(), vid, asset, file); err != nil {
-		return "", fmt.Errorf("failed downloading video: %v", err)
+	dwd := &downloader.Downloader{
+		OutputDir: dir + "/tmp",
+	}
+	dwd.HTTPClient = &http.Client{Transport: httpTransport}
+
+	err := dwd.DownloadWithHighQuality(context.Background(), fileName, vid, "hd1080")
+	if err == nil {
+		return nil
 	}
 
-	return fileName, nil
+	return dwd.Download(context.Background(), vid, &vid.Formats[0], fileName)
 }
