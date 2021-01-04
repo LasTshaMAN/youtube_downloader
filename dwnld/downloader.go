@@ -78,7 +78,7 @@ func cleanTmpArtifacts(dir string) error {
 	if err := os.RemoveAll(tmpDirPath); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(tmpDirPath, 0666); err != nil {
+	if err := os.MkdirAll(tmpDirPath, os.ModePerm); err != nil {
 		panic(fmt.Sprintf("Failed to create tmp dir: %v", err))
 	}
 	return nil
