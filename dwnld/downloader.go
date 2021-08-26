@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -89,54 +90,58 @@ func tmpDirIn(dir string) string {
 }
 
 func download(client youtube.Client, dir string, url string) {
-	fileName, err := downloadToTmp(client, dir, url)
+	fileName, downloaded, err := downloadToTmp(client, dir, url)
 	if err != nil {
 		fmt.Printf("download failed: %s - error: %v \n", url, err)
 		return
 	}
-	if fileName == "" {
+	if !downloaded {
 		return
 	}
-	if err := os.Rename(filepath.Join(tmpDirIn(dir), fileName), filepath.Join(dir, fileName)); err != nil {
+
+	err = os.Rename(filepath.Join(tmpDirIn(dir), fileName), filepath.Join(dir, fileName))
+	if err != nil {
 		fmt.Printf("failed to move file: %s - error: %v \n", fileName, err)
 		return
 	}
 }
 
-func downloadToTmp(client youtube.Client, dir string, url string) (string, error) {
+func downloadToTmp(client youtube.Client, dir string, url string) (string, bool, error) {
 	fmt.Printf("downloading ... %s ... \n", url)
 
 	vid, err := client.GetVideoContext(context.Background(), url)
 	if err != nil {
-		return "", fmt.Errorf("failed to get url info: %v", err)
+		return "", false, fmt.Errorf("failed to get url info: %v", err)
 	}
-
-	//format := vid.Formats.FindByQuality("hd1080")
 
 	fileName := vid.ID + ".mp4"
 
-	err = downloadVid(dir, fileName, vid)
+	downloaded, err := maybeDownloadVid(dir, fileName, vid)
 	if err != nil {
 		fmt.Printf("failed downloading vid: %s - error: %v \n", vid.Title, err)
 	}
+	if !downloaded {
+		return "", false, nil
+	}
 
-	return fileName, nil
+	return fileName, true, nil
 }
 
 func alreadyExists(dir, fileName string) bool {
-	if _, err := os.Stat(filepath.Join(dir, fileName)); err != nil {
+	stats, err := os.Stat(filepath.Join(dir, fileName))
+	if err != nil {
 		if os.IsNotExist(err) {
 			return false
 		} else {
 			panic(fmt.Sprintf("Failed to check whether file already exists: %s - error: %v", fileName, err))
 		}
 	}
-	return true
+	return stats.Size() != 0
 }
 
-func downloadVid(dir string, fileName string, vid *youtube.Video) error {
+func maybeDownloadVid(dir string, fileName string, vid *youtube.Video) (bool, error) {
 	if alreadyExists(dir, fileName) {
-		return nil
+		return false, nil
 	}
 
 	httpTransport := &http.Transport{
@@ -158,10 +163,43 @@ func downloadVid(dir string, fileName string, vid *youtube.Video) error {
 	}
 	dwd.HTTPClient = &http.Client{Transport: httpTransport}
 
-	err := dwd.DownloadWithHighQuality(context.Background(), fileName, vid, "hd1080")
-	if err == nil {
-		return nil
+	// Interested only in formats with audio.
+	formats := vid.Formats.WithAudioChannels()
+
+	// Pick the first format that allows for downloading full stream (I've encountered an issue that some formats
+	// stick EOF in the middle of its stream or something, thus not allowing to download the full stream, only
+	// some part of it).
+	for _, format := range formats {
+		stream, size, err := dwd.GetStream(vid, &format)
+		if err != nil {
+			return false, fmt.Errorf("can't get context for vid: %s", vid.ID)
+		}
+
+		// For some reason there are formats of 0 size ... we don't need these.
+		if size == 0 {
+			continue
+		}
+
+		file, err := os.Create(dir + "/tmp/" + fileName)
+		if err != nil {
+			return false, fmt.Errorf("can't create file: %s, err: %w", file.Name(), err)
+		}
+
+		n, err := io.Copy(file, stream)
+		if err != nil {
+			return false, fmt.Errorf("can't copy stream for file: %s, err: %w", file.Name(), err)
+		}
+
+		err = file.Close()
+		if err != nil {
+			return false, fmt.Errorf("can't close file: %s, err: %w", file.Name(), err)
+		}
+
+		// Once fully downloadable stream is found - it's good for us.
+		if n == size {
+			break
+		}
 	}
 
-	return dwd.Download(context.Background(), vid, &vid.Formats[0], fileName)
+	return true, nil
 }
