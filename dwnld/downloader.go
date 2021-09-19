@@ -22,12 +22,7 @@ func DownloadBatch(dir string, urls []string) {
 	urls = removeEmpty(urls)
 	urls = removeDuplicates(urls)
 
-	if err := cleanTmpArtifacts(dir); err != nil {
-		fmt.Printf("failed cleaning tmp artifacts: %v \n", err)
-		return
-	}
-
-	fmt.Printf("will download in `%s` \n", dir)
+	fmt.Printf("will download vids in `%s` \n", dir)
 
 	workersAmount := uint(100)
 	e := executor.New(workersAmount)
@@ -40,13 +35,59 @@ func DownloadBatch(dir string, urls []string) {
 	for _, url := range urls {
 		e.Enqueue(func(dir, url string) func() {
 			return func() {
-				download(client, dir, url)
+				fmt.Printf("downloading ... %s ... \n", url)
+
+				vid, err := client.GetVideoContext(context.Background(), url)
+				if err != nil {
+					panic(fmt.Errorf("failed to get url %s info: %v", url, err))
+				}
+
+				downloadToTmp(dir, vid)
 				out <- struct{}{}
 			}
 		}(dir, url))
 	}
 
 	for range urls {
+		<-out
+	}
+
+	fmt.Printf("done \n")
+}
+
+func DownloadPlaylist(dir string, playlistID string) {
+	fmt.Printf("will download playlist in `%s` \n", dir)
+
+	workersAmount := uint(100)
+	e := executor.New(workersAmount)
+	out := make(chan struct{}, workersAmount)
+
+	client := youtube.Client{
+		HTTPClient: http.DefaultClient,
+	}
+
+	playlist, err := client.GetPlaylist(playlistID)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, vid := range playlist.Videos {
+		e.Enqueue(func(dir string, vid *youtube.PlaylistEntry) func() {
+			return func() {
+				fmt.Printf("downloading ... %s ... \n", vid.ID)
+
+				video, err := client.VideoFromPlaylistEntry(vid)
+				if err != nil {
+					panic(err)
+				}
+
+				downloadToTmp(dir, video)
+				out <- struct{}{}
+			}
+		}(dir, vid))
+	}
+
+	for range playlist.Videos {
 		<-out
 	}
 
@@ -74,7 +115,7 @@ func removeDuplicates(src []string) []string {
 	return result
 }
 
-func cleanTmpArtifacts(dir string) error {
+func CleanTmpArtifacts(dir string) error {
 	tmpDirPath := tmpDirIn(dir)
 	if err := os.RemoveAll(tmpDirPath); err != nil {
 		return err
@@ -89,10 +130,10 @@ func tmpDirIn(dir string) string {
 	return filepath.Join(dir, tmpDirName)
 }
 
-func download(client youtube.Client, dir string, url string) {
-	fileName, downloaded, err := downloadToTmp(client, dir, url)
+func downloadToTmp(dir string, vid *youtube.Video) {
+	fileName, downloaded, err := tryDownload(dir, vid)
 	if err != nil {
-		fmt.Printf("download failed: %s - error: %v \n", url, err)
+		fmt.Printf("download failed for vid: %s - error: %v \n", vid.ID, err)
 		return
 	}
 	if !downloaded {
@@ -106,14 +147,7 @@ func download(client youtube.Client, dir string, url string) {
 	}
 }
 
-func downloadToTmp(client youtube.Client, dir string, url string) (string, bool, error) {
-	fmt.Printf("downloading ... %s ... \n", url)
-
-	vid, err := client.GetVideoContext(context.Background(), url)
-	if err != nil {
-		return "", false, fmt.Errorf("failed to get url info: %v", err)
-	}
-
+func tryDownload(dir string, vid *youtube.Video) (string, bool, error) {
 	fileName := vid.ID + ".mp4"
 
 	downloaded, err := maybeDownloadVid(dir, fileName, vid)
