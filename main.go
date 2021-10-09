@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"youtube_downloader/dwnld"
+)
 
 const dir = "PUT_YOUR_DIR_PATH_HERE"
 
