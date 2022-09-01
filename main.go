@@ -2,25 +2,13 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"youtube_downloader/dwnld"
 )
 
-const dir = "PUT_YOUR_DIR_PATH_HERE"
+const dir = "/Users/iurii/youtube"
 
-// For example:
-//const dir = "/home/lastshaman/youtube"
-
-var urls = []string{
-	"",
-	"",
-	"",
-	"",
-	"",
-	"",
-	"",
-	"",
-	"",
-}
+var urls = ""
 
 // The library used for downloading is https://github.com/kkdai/youtube
 // For an example on how to download a playlist see - https://github.com/kkdai/youtube/blob/master/example_test.go.
@@ -31,6 +19,6 @@ func main() {
 		return
 	}
 
-	dwnld.DownloadBatch(dir, urls)
-	dwnld.DownloadPlaylist(dir, "PLVP9aGDn-X0RO9JXbc8ayQtIp_DyhlA9s")
+	dwnld.DownloadBatch(dir, strings.Split(urls, "\n"))
+	//dwnld.DownloadPlaylist(dir, "PLL1JDiTNCUAVq9YeGbxDtqBgaqUZajGIH")
 }
